@@ -114,7 +114,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
   const [selectedCam, setSelectedCam] = useState('front');
   const [preciseDuration, setPreciseDuration] = useState(clip.totalDuration);
   const [isCalculating, setIsCalculating] = useState(true);
-  const [isFitContain, setIsFitContain] = useState(false); // Toggle for fit/cover
+  const [isFitContain, setIsFitContain] = useState(true);
 
   const eventTime = useMemo(() => {
     if(!clip.meta.timestamp) return null;
@@ -163,7 +163,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ignore if user is typing in inputs (though we have none here, good practice)
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
 
       switch(e.key) {
@@ -194,7 +193,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentTime, duration, onBack]); // Deps needed for jump which uses state
+  }, [currentTime, duration, onBack]);
 
   // Sync Loop
   const lastTimeRef = useRef(Date.now());
@@ -327,7 +326,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
           {eventTime && (
             <div
                 className="absolute top-0 w-1 h-full bg-yellow-400 z-10"
-                // Clamp the event marker to max 100% to avoid visual bugs
                 style={{ left: `${Math.min((eventTime/duration)*100, 100)}%` }}
                 title="Event"
             />
@@ -335,7 +333,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
         </div>
 
         <div className="flex items-center justify-between mt-1">
-          <div className="text-sm font-mono text-zinc-400 w-24">
+          <div className="text-sm font-mono text-zinc-400 w-28 text-center whitespace-nowrap">
             {formatTime(currentTime)} / {formatTime(duration)}
           </div>
 
@@ -352,14 +350,15 @@ const VideoPlayer = ({ clip, t, onBack }) => {
           </div>
 
           <div className="flex items-center gap-4 w-64 justify-end">
-             {/* Aspect Ratio Toggle */}
              <button onClick={() => setIsFitContain(p => !p)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded" title={t.fit_mode}>
                 {isFitContain ? <Maximize size={18} /> : <Monitor size={18} />}
              </button>
 
              {eventTime && (
-                <button onClick={() => seek(Math.max(0, eventTime - 5))} className="text-xs px-3 py-1.5 bg-yellow-600/20 text-yellow-400 rounded hover:bg-yellow-600/30 flex items-center gap-2 transition-colors">
-                  <AlertCircle size={14} /> {t.gotoEvent}
+                <button onClick={() => seek(Math.max(0, eventTime - 5))}
+                        className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-yellow-900/30 rounded transition-colors"
+                        title={t.gotoEvent}>
+                  <AlertCircle size={18} />
                 </button>
              )}
 
