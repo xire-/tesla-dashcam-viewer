@@ -17,7 +17,6 @@ function getCameraFromFilename(filename) {
 export async function parseDirectory(files) {
   const groups = {};
 
-  // 1. Group files by folder
   for (const file of files) {
     const path = file.webkitRelativePath || file.name;
     if (!path.includes('SavedClips') && !path.includes('SentryClips')) continue;
@@ -32,14 +31,12 @@ export async function parseDirectory(files) {
 
   const parsedClips = [];
 
-  // 2. Validate and build structures
   for (const [folderName, folderFiles] of Object.entries(groups)) {
     const thumb = folderFiles.find(f => /thumb\.png$/i.test(f.name));
     const eventFile = folderFiles.find(f => /event\.json$/i.test(f.name));
 
     if (!thumb || !eventFile) continue;
 
-    // Parse Metadata
     let meta = {};
     try {
       const text = await readFileText(eventFile);
@@ -49,24 +46,19 @@ export async function parseDirectory(files) {
       continue;
     }
 
-    // Determine Type and Display Text for Reason
     let displayReason = meta.reason;
-    let clipType = 'saved'; // default
+    let clipType = 'saved';
 
-    // Check path for fallback type detection
     const isSentryPath = folderFiles[0].webkitRelativePath.includes('SentryClips');
     if (isSentryPath) clipType = 'sentry';
 
-    // Override based on specific reason mapping
     if (meta.reason && REASON_MAPPING[meta.reason]) {
       clipType = REASON_MAPPING[meta.reason].type;
-      displayReason = REASON_MAPPING[meta.reason].key; // This is the translation key
+      displayReason = REASON_MAPPING[meta.reason].key;
     } else if (meta.reason) {
-       // Log unknown reasons to console as requested
        console.warn("Unknown reason encountered:", meta.reason);
     }
 
-    // Process Video Parts
     const mp4s = folderFiles.filter(f => /\.mp4$/i.test(f.name));
     const partsMap = new Map();
 
@@ -107,8 +99,6 @@ export async function parseDirectory(files) {
 
     if (isClipValid && parts.length > 0) {
       const clipDate = parseTimestampFromName(folderName) || parts[parts.length-1].timestamp;
-
-      // Initial estimated duration (will be refined in player)
       const estimatedDuration = ((parts[parts.length-1].timestamp - parts[0].timestamp) / 1000) + 60;
 
       parsedClips.push({
@@ -116,7 +106,7 @@ export async function parseDirectory(files) {
         name: folderName,
         timestamp: clipDate,
         thumbUrl: URL.createObjectURL(thumb),
-        meta: { ...meta, displayReason }, // Store the translation key or raw string
+        meta: { ...meta, displayReason },
         parts: parts,
         totalDuration: estimatedDuration,
         type: clipType

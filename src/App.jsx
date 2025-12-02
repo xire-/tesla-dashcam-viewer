@@ -55,7 +55,6 @@ const ClipList = ({ clips, onSelect, onReset, t, lang }) => {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl mx-auto">
           {clips.map(c => {
-            // Translate the reason if it's a key, otherwise show raw
             const reasonText = t[c.meta.displayReason] || c.meta.displayReason || '';
             const location = [c.meta.city, c.meta.street].filter(Boolean).join(', ');
 
@@ -106,7 +105,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
   const [preciseDuration, setPreciseDuration] = useState(clip.totalDuration);
   const [isCalculating, setIsCalculating] = useState(true);
 
-  // Calculate event time relative to clip start
   const eventTime = useMemo(() => {
     if(!clip.meta.timestamp) return null;
     const eventDate = new Date(clip.meta.timestamp);
@@ -114,9 +112,9 @@ const VideoPlayer = ({ clip, t, onBack }) => {
     return (eventDate - startDate) / 1000;
   }, [clip]);
 
-  // Initial Setup: Calculate precise duration & Auto-start logic
+  // Initial Setup: Calculate precise duration & Auto-start
   useEffect(() => {
-    // 1. Auto Start Logic
+    // Auto Start
     let startOffset = 0;
     if (eventTime) {
       startOffset = Math.max(0, eventTime - 20);
@@ -124,22 +122,27 @@ const VideoPlayer = ({ clip, t, onBack }) => {
     setCurrentTime(startOffset);
     setIsPlaying(true);
 
-    // 2. Precise Duration Calculation (Async)
+    // Duration Calc
     const calculateDuration = async () => {
       let total = 0;
-      for (const part of clip.parts) {
-        // Grab any available camera file from this part to check duration
+      console.group("Duration Debug");
+      for (let i = 0; i < clip.parts.length; i++) {
+        const part = clip.parts[i];
         const camKey = Object.keys(part.cameras)[0];
         if (!camKey) continue;
         const file = part.cameras[camKey].file;
 
         try {
           const dur = await getVideoDuration(file);
+          console.log(`[Duration Debug] Part ${i}: ${dur}s`);
           total += dur;
         } catch (e) {
-          total += 60; // fallback
+          console.warn(`[Duration Debug] Failed part ${i}`, e);
+          total += 60;
         }
       }
+      console.log(`[Duration Debug] Total calculated: ${total}s`);
+      console.groupEnd();
       setPreciseDuration(total);
       setIsCalculating(false);
     };
@@ -149,7 +152,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
 
   const duration = preciseDuration;
 
-  // Animation Loop for Sync
+  // Sync Loop
   const lastTimeRef = useRef(Date.now());
   const reqRef = useRef();
 
@@ -174,28 +177,18 @@ const VideoPlayer = ({ clip, t, onBack }) => {
   const seek = (time) => setCurrentTime(Math.max(0, Math.min(time, duration)));
   const jump = (delta) => seek(currentTime + delta);
 
-  // Layout Config
   const gridLayout = [
     ['left_pillar', 'front', 'right_pillar'],
     ['right_repeater', 'back', 'left_repeater']
   ];
 
   const getVideoSource = (cameraName) => {
-    let currentPartIndex = 0;
-    let accumulatedTime = 0;
-
-    // Find which part we are in based on precise durations (or estimates if not ready)
-    // Note: To be perfectly precise with VBR clips, we should store per-part durations in state.
-    // For now, we assume standard ~60s parts but the total duration limit is correct.
-    // Given the structure, simple timestamp comparison is safer for selecting the FILE.
-
     let bestPart = clip.parts[0];
     let partStartTime = 0;
 
     for (let i = 0; i < clip.parts.length; i++) {
       const p = clip.parts[i];
       const pStart = (p.timestamp - clip.parts[0].timestamp) / 1000;
-      // Simple logic: if next part starts after current time, we are in this part
       const nextPart = clip.parts[i+1];
       const nextStart = nextPart ? (nextPart.timestamp - clip.parts[0].timestamp) / 1000 : Infinity;
 
@@ -257,17 +250,24 @@ const VideoPlayer = ({ clip, t, onBack }) => {
             <div className="flex-1 relative rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800" onClick={() => setViewMode('grid')}>
                <SyncedVideo source={getVideoSource(selectedCam)} isPlaying={isPlaying} rate={playbackRate} />
                <div className="absolute top-4 left-4 text-xl font-bold drop-shadow-md">{t['cam_'+selectedCam]}</div>
-               <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 bg-black/20 transition-opacity cursor-pointer">
-                 <Grid size={48} className="text-white drop-shadow-lg" />
-               </div>
             </div>
+
             <div className="w-64 flex flex-col gap-2 overflow-y-auto pr-1">
-               {gridLayout.flat().filter(c => c !== selectedCam).map(cam => (
-                 <div key={cam} className="relative aspect-video bg-zinc-900 rounded cursor-pointer hover:ring-2 ring-red-500 transition-all" onClick={() => setSelectedCam(cam)}>
-                   <SyncedVideo source={getVideoSource(cam)} isPlaying={isPlaying} rate={playbackRate} muted={true} />
-                   <div className="absolute bottom-1 right-1 bg-black/70 px-1 text-[10px] rounded">{t['cam_'+cam]}</div>
-                 </div>
-               ))}
+               {gridLayout.flat().map(cam => {
+                 if (cam === selectedCam) {
+                    return (
+                        <div key={cam} className="relative aspect-video bg-zinc-900/50 rounded border border-zinc-800 flex items-center justify-center text-xs text-zinc-600 font-medium">
+                            {t.viewing}
+                        </div>
+                    );
+                 }
+                 return (
+                    <div key={cam} className="relative aspect-video bg-zinc-900 rounded cursor-pointer hover:ring-2 ring-red-500 transition-all" onClick={() => setSelectedCam(cam)}>
+                        <SyncedVideo source={getVideoSource(cam)} isPlaying={isPlaying} rate={playbackRate} muted={true} />
+                        <div className="absolute bottom-1 right-1 bg-black/70 px-1 text-[10px] rounded">{t['cam_'+cam]}</div>
+                    </div>
+                 );
+               })}
             </div>
           </div>
         )}
@@ -275,7 +275,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
 
       {/* Controls */}
       <div className="h-32 bg-zinc-900 px-6 py-4 flex flex-col justify-center gap-3 border-t border-zinc-800 shrink-0">
-        {/* Timeline */}
         <div
           className="relative h-4 bg-zinc-800 rounded-full cursor-pointer group"
           onClick={(e) => {
@@ -292,7 +291,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
           )}
         </div>
 
-        {/* Control Row */}
         <div className="flex items-center justify-between mt-1">
           <div className="text-sm font-mono text-zinc-400 w-24">
             {formatTime(currentTime)} / {formatTime(duration)}
@@ -336,14 +334,13 @@ const VideoPlayer = ({ clip, t, onBack }) => {
   );
 };
 
-// Helper for duration
 function getVideoDuration(file) {
     return new Promise((resolve) => {
         const video = document.createElement('video');
         video.preload = 'metadata';
         video.onloadedmetadata = () => {
             resolve(video.duration);
-            URL.revokeObjectURL(video.src);
+            URL.revokeObjectURL(video.src); // Cleanup
         };
         video.onerror = () => resolve(60);
         video.src = URL.createObjectURL(file);
@@ -358,6 +355,9 @@ const SyncedVideo = React.memo(({ source, isPlaying, rate, muted = true }) => {
     const url = URL.createObjectURL(source.file);
     vRef.current.src = url;
 
+    // Attempt to reduce black flash by preloading
+    vRef.current.preload = "auto";
+
     const onMeta = () => { if(vRef.current) vRef.current.currentTime = source.offset; };
     vRef.current.addEventListener('loadedmetadata', onMeta, { once: true });
 
@@ -368,7 +368,6 @@ const SyncedVideo = React.memo(({ source, isPlaying, rate, muted = true }) => {
     const v = vRef.current;
     if(!v) return;
 
-    // Sync check
     if(Math.abs(v.currentTime - source.offset) > 0.4) {
       v.currentTime = source.offset;
     }

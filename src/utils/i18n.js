@@ -18,8 +18,10 @@ export const translations = {
     sentry_obj: "Sentry (Object)",
     sentry_int: "Sentry (Intrusion)",
     sentry_gen: "Sentry",
+    saved: "Saved",
     reset: "Reset",
     calculating_duration: "Calculating precise duration...",
+    viewing: "Viewing",
     cam_front: "Front",
     cam_back: "Back",
     cam_left_pillar: "Left Pillar",
@@ -46,8 +48,10 @@ export const translations = {
     sentry_obj: "Sentry (Rilevamento)",
     sentry_int: "Sentry (Intrusione)",
     sentry_gen: "Sentry",
+    saved: "Salvati",
     reset: "Reset",
     calculating_duration: "Calcolo durata precisa...",
+    viewing: "In visione",
     cam_front: "Frontale",
     cam_back: "Retro",
     cam_left_pillar: "Montante Sinistro",
@@ -57,7 +61,6 @@ export const translations = {
   }
 };
 
-// Mappa i codici di errore Tesla a chiavi di traduzione e tipo di clip
 export const REASON_MAPPING = {
   'user_interaction_dashcam_multifunction_selected': { key: 'manual', type: 'saved' },
   'user_interaction_dashcam_launcher_action_tapped': { key: 'manual', type: 'saved' },
