@@ -17,7 +17,7 @@
   background: #52525b;
 }
 video {
-  object-fit: cover;
+  /* Default is handled via react props now */
 }
 
 /* Custom Range Slider Styling */

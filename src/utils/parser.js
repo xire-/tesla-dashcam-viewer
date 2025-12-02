@@ -99,6 +99,7 @@ export async function parseDirectory(files) {
 
     if (isClipValid && parts.length > 0) {
       const clipDate = parseTimestampFromName(folderName) || parts[parts.length-1].timestamp;
+      // Default estimate if calculation fails
       const estimatedDuration = ((parts[parts.length-1].timestamp - parts[0].timestamp) / 1000) + 60;
 
       parsedClips.push({

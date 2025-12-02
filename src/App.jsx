@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { translations } from './utils/i18n';
 import { parseDirectory } from './utils/parser';
-import { FolderInput, Play, Pause, Rewind, FastForward, Grid, ChevronLeft, AlertCircle, MapPin, Video, RotateCcw } from 'lucide-react';
+import { FolderInput, Play, Pause, Rewind, FastForward, Grid, ChevronLeft, AlertCircle, MapPin, Video, RotateCcw, Monitor, Maximize } from 'lucide-react';
 
 // --- COMPONENTS ---
 
@@ -32,6 +32,16 @@ const Intro = ({ onFiles, lang, setLang, t }) => {
 };
 
 const ClipList = ({ clips, onSelect, onReset, t, lang }) => {
+
+  // Handle ESC to go back to folder selection
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onReset();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onReset]);
+
   const formatDate = (date) => {
     return new Intl.DateTimeFormat(lang === 'it' ? 'it-IT' : 'en-GB', {
       day: 'numeric', month: 'short', year: 'numeric'
@@ -48,7 +58,7 @@ const ClipList = ({ clips, onSelect, onReset, t, lang }) => {
           </span>
         </div>
         <button onClick={onReset} className="text-sm text-zinc-400 hover:text-white transition-colors">
-          {t.changeFolder}
+          {t.changeFolder} (Esc)
         </button>
       </header>
 
@@ -104,6 +114,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
   const [selectedCam, setSelectedCam] = useState('front');
   const [preciseDuration, setPreciseDuration] = useState(clip.totalDuration);
   const [isCalculating, setIsCalculating] = useState(true);
+  const [isFitContain, setIsFitContain] = useState(false); // Toggle for fit/cover
 
   const eventTime = useMemo(() => {
     if(!clip.meta.timestamp) return null;
@@ -114,7 +125,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
 
   // Initial Setup: Calculate precise duration & Auto-start
   useEffect(() => {
-    // Auto Start
     let startOffset = 0;
     if (eventTime) {
       startOffset = Math.max(0, eventTime - 20);
@@ -122,7 +132,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
     setCurrentTime(startOffset);
     setIsPlaying(true);
 
-    // Duration Calc
     const calculateDuration = async () => {
       let total = 0;
       console.group("Duration Debug");
@@ -131,26 +140,61 @@ const VideoPlayer = ({ clip, t, onBack }) => {
         const camKey = Object.keys(part.cameras)[0];
         if (!camKey) continue;
         const file = part.cameras[camKey].file;
-
         try {
           const dur = await getVideoDuration(file);
           console.log(`[Duration Debug] Part ${i}: ${dur}s`);
           total += dur;
         } catch (e) {
-          console.warn(`[Duration Debug] Failed part ${i}`, e);
           total += 60;
         }
       }
-      console.log(`[Duration Debug] Total calculated: ${total}s`);
       console.groupEnd();
       setPreciseDuration(total);
       setIsCalculating(false);
     };
-
     calculateDuration();
   }, [clip, eventTime]);
 
   const duration = preciseDuration;
+
+  const seek = (time) => setCurrentTime(Math.max(0, Math.min(time, duration)));
+  const jump = (delta) => seek(currentTime + delta);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignore if user is typing in inputs (though we have none here, good practice)
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+      switch(e.key) {
+        case ' ':
+        case 'k':
+        case 'K':
+          e.preventDefault();
+          setIsPlaying(p => !p);
+          break;
+        case 'j':
+        case 'J':
+          jump(-5);
+          break;
+        case 'l':
+        case 'L':
+          jump(5);
+          break;
+        case '<':
+          setPlaybackRate(r => Math.max(0.25, r - 0.25));
+          break;
+        case '>':
+          setPlaybackRate(r => Math.min(5, r + 0.25));
+          break;
+        case 'Escape':
+          onBack();
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentTime, duration, onBack]); // Deps needed for jump which uses state
 
   // Sync Loop
   const lastTimeRef = useRef(Date.now());
@@ -174,9 +218,6 @@ const VideoPlayer = ({ clip, t, onBack }) => {
     return () => cancelAnimationFrame(reqRef.current);
   }, [isPlaying, playbackRate, duration]);
 
-  const seek = (time) => setCurrentTime(Math.max(0, Math.min(time, duration)));
-  const jump = (delta) => seek(currentTime + delta);
-
   const gridLayout = [
     ['left_pillar', 'front', 'right_pillar'],
     ['right_repeater', 'back', 'left_repeater']
@@ -191,17 +232,14 @@ const VideoPlayer = ({ clip, t, onBack }) => {
       const pStart = (p.timestamp - clip.parts[0].timestamp) / 1000;
       const nextPart = clip.parts[i+1];
       const nextStart = nextPart ? (nextPart.timestamp - clip.parts[0].timestamp) / 1000 : Infinity;
-
       if (currentTime >= pStart && currentTime < nextStart) {
         bestPart = p;
         partStartTime = pStart;
         break;
       }
     }
-
     const offset = currentTime - partStartTime;
     const camData = bestPart.cameras[cameraName];
-
     return {
       file: camData ? camData.file : null,
       offset: offset,
@@ -236,7 +274,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
               <div key={rIdx} className="flex-1 flex">
                 {row.map(cam => (
                   <div key={cam} className="flex-1 relative border border-zinc-900/50 group cursor-pointer" onClick={() => { setSelectedCam(cam); setViewMode('single'); }}>
-                    <SyncedVideo source={getVideoSource(cam)} isPlaying={isPlaying} rate={playbackRate} />
+                    <SyncedVideo source={getVideoSource(cam)} isPlaying={isPlaying} rate={playbackRate} fitContain={isFitContain} />
                     <div className="absolute top-2 left-2 bg-black/60 px-2 py-0.5 rounded text-xs font-medium text-white/80 pointer-events-none">
                       {t['cam_'+cam]}
                     </div>
@@ -248,7 +286,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
         ) : (
           <div className="w-full h-full flex p-4 gap-4">
             <div className="flex-1 relative rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800" onClick={() => setViewMode('grid')}>
-               <SyncedVideo source={getVideoSource(selectedCam)} isPlaying={isPlaying} rate={playbackRate} />
+               <SyncedVideo source={getVideoSource(selectedCam)} isPlaying={isPlaying} rate={playbackRate} fitContain={isFitContain} />
                <div className="absolute top-4 left-4 text-xl font-bold drop-shadow-md">{t['cam_'+selectedCam]}</div>
             </div>
 
@@ -263,7 +301,7 @@ const VideoPlayer = ({ clip, t, onBack }) => {
                  }
                  return (
                     <div key={cam} className="relative aspect-video bg-zinc-900 rounded cursor-pointer hover:ring-2 ring-red-500 transition-all" onClick={() => setSelectedCam(cam)}>
-                        <SyncedVideo source={getVideoSource(cam)} isPlaying={isPlaying} rate={playbackRate} muted={true} />
+                        <SyncedVideo source={getVideoSource(cam)} isPlaying={isPlaying} rate={playbackRate} muted={true} fitContain={isFitContain} />
                         <div className="absolute bottom-1 right-1 bg-black/70 px-1 text-[10px] rounded">{t['cam_'+cam]}</div>
                     </div>
                  );
@@ -287,7 +325,12 @@ const VideoPlayer = ({ clip, t, onBack }) => {
              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full scale-0 group-hover:scale-100 transition-transform shadow"></div>
           </div>
           {eventTime && (
-            <div className="absolute top-0 w-1 h-full bg-yellow-400 z-10" style={{ left: `${(eventTime/duration)*100}%` }} title="Event" />
+            <div
+                className="absolute top-0 w-1 h-full bg-yellow-400 z-10"
+                // Clamp the event marker to max 100% to avoid visual bugs
+                style={{ left: `${Math.min((eventTime/duration)*100, 100)}%` }}
+                title="Event"
+            />
           )}
         </div>
 
@@ -297,18 +340,23 @@ const VideoPlayer = ({ clip, t, onBack }) => {
           </div>
 
           <div className="flex items-center gap-6">
-            <button onClick={() => jump(-5)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full flex flex-col items-center">
+            <button onClick={() => jump(-5)} title="J" className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full flex flex-col items-center">
                 <Rewind size={20} /> <span className="text-[10px]">-5s</span>
             </button>
-            <button onClick={() => setIsPlaying(!isPlaying)} className="p-4 bg-white text-black rounded-full hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10">
+            <button onClick={() => setIsPlaying(!isPlaying)} title="K / Space" className="p-4 bg-white text-black rounded-full hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10">
               {isPlaying ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
             </button>
-            <button onClick={() => jump(5)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full flex flex-col items-center">
+            <button onClick={() => jump(5)} title="L" className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-full flex flex-col items-center">
                 <FastForward size={20} /> <span className="text-[10px]">+5s</span>
             </button>
           </div>
 
           <div className="flex items-center gap-4 w-64 justify-end">
+             {/* Aspect Ratio Toggle */}
+             <button onClick={() => setIsFitContain(p => !p)} className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded" title={t.fit_mode}>
+                {isFitContain ? <Maximize size={18} /> : <Monitor size={18} />}
+             </button>
+
              {eventTime && (
                 <button onClick={() => seek(Math.max(0, eventTime - 5))} className="text-xs px-3 py-1.5 bg-yellow-600/20 text-yellow-400 rounded hover:bg-yellow-600/30 flex items-center gap-2 transition-colors">
                   <AlertCircle size={14} /> {t.gotoEvent}
@@ -340,22 +388,20 @@ function getVideoDuration(file) {
         video.preload = 'metadata';
         video.onloadedmetadata = () => {
             resolve(video.duration);
-            URL.revokeObjectURL(video.src); // Cleanup
+            URL.revokeObjectURL(video.src);
         };
         video.onerror = () => resolve(60);
         video.src = URL.createObjectURL(file);
     });
 }
 
-const SyncedVideo = React.memo(({ source, isPlaying, rate, muted = true }) => {
+const SyncedVideo = React.memo(({ source, isPlaying, rate, muted = true, fitContain = false }) => {
   const vRef = useRef(null);
 
   useEffect(() => {
     if (!vRef.current || !source.file) return;
     const url = URL.createObjectURL(source.file);
     vRef.current.src = url;
-
-    // Attempt to reduce black flash by preloading
     vRef.current.preload = "auto";
 
     const onMeta = () => { if(vRef.current) vRef.current.currentTime = source.offset; };
@@ -367,12 +413,10 @@ const SyncedVideo = React.memo(({ source, isPlaying, rate, muted = true }) => {
   useEffect(() => {
     const v = vRef.current;
     if(!v) return;
-
     if(Math.abs(v.currentTime - source.offset) > 0.4) {
       v.currentTime = source.offset;
     }
     v.playbackRate = rate;
-
     if (isPlaying) v.play().catch(e => {});
     else v.pause();
   }, [isPlaying, rate, source.offset]);
@@ -380,7 +424,12 @@ const SyncedVideo = React.memo(({ source, isPlaying, rate, muted = true }) => {
   if (!source.file) return <div className="w-full h-full bg-zinc-900 flex items-center justify-center text-zinc-700"><Video size={32}/></div>;
 
   return (
-    <video ref={vRef} className="w-full h-full object-cover bg-black" muted={muted} playsInline />
+    <video
+        ref={vRef}
+        className={`w-full h-full bg-black ${fitContain ? 'object-contain' : 'object-cover'}`}
+        muted={muted}
+        playsInline
+    />
   );
 });
 
